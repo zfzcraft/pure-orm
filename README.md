@@ -1,3 +1,7 @@
+WIP
+
+[![zh-CN](https://img.shields.io/badge/lang-中文-blue)](README.zh-CN.md)
+
 # Pure ORM Design Philosophy
 ## I. Core Positioning of the Framework
 Pure ORM adheres to the core philosophy of **minimalism, purity, transparency, and controllability**, completely stripping away all redundant designs of traditional persistence layer frameworks and returning to the most original and essential core responsibilities of ORM.
