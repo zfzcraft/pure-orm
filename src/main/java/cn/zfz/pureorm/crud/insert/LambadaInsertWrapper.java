@@ -22,8 +22,7 @@ public class LambadaInsertWrapper<E> implements InsertWrapper<LambadaInsertWrapp
 
 	private List<Object> columnValues = new ArrayList<>();
 
-	private LambadaInsertWrapper() {
-	}
+	
 
 	private LambadaInsertWrapper(E entity, boolean skipNullFields) {
 		if (skipNullFields) {
@@ -101,16 +100,6 @@ public class LambadaInsertWrapper<E> implements InsertWrapper<LambadaInsertWrapp
 	public List<Object> getColumnValues() {
 		return Collections.unmodifiableList(columnValues);
 
-	}
-
-	public static <E> LambadaInsertWrapper<E> of() {
-		LambadaInsertWrapper<E> insertWrapper = new LambadaInsertWrapper<>();
-		return insertWrapper;
-	}
-
-	public static <E> LambadaInsertWrapper<E> of(E entity) {
-		LambadaInsertWrapper<E> insertWrapper = new LambadaInsertWrapper<>(entity, false);
-		return insertWrapper;
 	}
 
 	@Override
