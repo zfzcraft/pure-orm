@@ -60,7 +60,7 @@ Pure ORM only retains **one-to-one and one-to-many** standard association mappin
 4. No black boxes, no black magic, no implicit logic, fully traceable and maintainable throughout
 5. Only perform core ORM tasks, with no redundancy, bloat, coupling, or intrusion
 6. Simple and easy to understand, low cost to get started, stable online, and easy to troubleshoot
-
+7. Only support standard entity attributes and database-adapted types, including basic data wrapper classes, standard date and time types such as LocalDate and LocalDateTime, as well as enumeration types. It does not support complex custom types and non-standard attribute extensions, ensuring an extremely simple and stable entity structure.
 ## IV. Summary of Overall Design
 Pure ORM is not about piling up functions, but about **doing subtraction, eliminating drawbacks, and retaining essence**.
 
