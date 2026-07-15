@@ -16,7 +16,6 @@ import cn.zfz.pureorm.cache.EntityMetaCache;
 import cn.zfz.pureorm.cache.FieldMeta;
 import cn.zfz.pureorm.enums.FieldKind;
 import cn.zfz.pureorm.handler.EnumTypeHandler;
-import cn.zfz.pureorm.utils.StringUtils;
 
 public final class AutoEntityMapper {
 

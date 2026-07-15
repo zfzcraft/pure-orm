@@ -2,7 +2,6 @@ package cn.zfz.pureorm.test;
 
 import cn.zfz.pureorm.annotations.Column;
 import cn.zfz.pureorm.annotations.NotColumn;
-import cn.zfz.pureorm.annotations.OneToMany;
 import cn.zfz.pureorm.annotations.PrimaryKey;
 import cn.zfz.pureorm.annotations.Table;
 import lombok.Data;

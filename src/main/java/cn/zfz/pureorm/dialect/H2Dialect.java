@@ -70,11 +70,4 @@ public class H2Dialect implements Dialect {
             sql.append("?");
         }
     }
-
-    private void appendUpdateSet(StringBuilder sql, List<String> columns) {
-        for (int i = 0; i < columns.size(); i++) {
-            if (i > 0) sql.append(", ");
-            sql.append(columns.get(i)).append(" = ?");
-        }
-    }
 }

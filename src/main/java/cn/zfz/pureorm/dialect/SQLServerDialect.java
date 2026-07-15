@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 
 import cn.zfz.pureorm.core.SqlAndParams;
-import cn.zfz.pureorm.crud.upsert.LambadaUpsertWrapper;
 import cn.zfz.pureorm.crud.upsert.UpsertWrapper;
 
 public class SQLServerDialect implements Dialect {

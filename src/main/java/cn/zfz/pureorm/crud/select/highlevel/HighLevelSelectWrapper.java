@@ -9,7 +9,6 @@ import cn.zfz.pureorm.core.PureOrmException;
 import cn.zfz.pureorm.crud.select.single.OrderByType;
 import cn.zfz.pureorm.enums.JoinType;
 import cn.zfz.pureorm.enums.Op;
-import cn.zfz.pureorm.utils.StringUtils;
 
 public class HighLevelSelectWrapper {
 
@@ -67,7 +66,6 @@ public class HighLevelSelectWrapper {
 	// ===================== SELECT =====================
 
 	@SafeVarargs
-	@SuppressWarnings("unchecked")
 	public final <T> HighLevelSelectWrapper select(LambadaColumn<T>... fields) {
 		for (LambadaColumn<T> f : fields) {
 			Class<?> entityClass = LambadaCache.getLambadaMeta(f).getEntityClass();
@@ -159,7 +157,6 @@ public class HighLevelSelectWrapper {
 	}
 
 	@SafeVarargs
-	@SuppressWarnings("unchecked")
 	public final <T> HighLevelSelectWrapper in(LambadaColumn<T> field, Object... values) {
 		where.addLeaf(field, Op.IN, values);
 		return this;

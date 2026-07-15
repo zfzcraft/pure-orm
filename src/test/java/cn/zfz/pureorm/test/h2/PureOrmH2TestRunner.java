@@ -12,7 +12,6 @@ import com.zaxxer.hikari.HikariDataSource;
 import cn.zfz.pureorm.core.BaseMapper;
 import cn.zfz.pureorm.core.BaseMapperExecutor;
 import cn.zfz.pureorm.core.HighLevelMapper;
-import cn.zfz.pureorm.core.LambadaColumn;
 import cn.zfz.pureorm.core.Page;
 import cn.zfz.pureorm.crud.delete.LambadaDeleteWrapper;
 import cn.zfz.pureorm.crud.select.highlevel.HighLevelSelectWrapper;

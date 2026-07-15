@@ -28,6 +28,7 @@ public class LambadaSelectWrapper<E> extends SelectWrapper<LambadaSelectWrapper<
 	public LambadaSelectWrapper() {
 	}
 
+	@SuppressWarnings("unchecked")
 	public LambadaSelectWrapper<E> select(LambadaColumn<E>... columns) {
 		for (LambadaColumn<E> column : columns) {
 			if (StringUtils.isEmpty(tableName)) {
