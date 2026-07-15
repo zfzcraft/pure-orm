@@ -1,6 +1,7 @@
 package cn.zfz.pureorm.dialect;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import cn.zfz.pureorm.core.SqlAndParams;
@@ -69,10 +70,9 @@ public class OracleDialect implements Dialect {
 
     // 4. 分页语法：Oracle 12c+ 支持标准 OFFSET/FETCH（和 SQL Server 一致）
     @Override
-    public String buildPageSql(String sql, long offset, int limit) {
-        // Oracle 12c+ 原生支持：OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-        // 兼容老版本（11g）可让用户自行用 ROWNUM 拼接（你定的规则：老版本不兼容）
-        return sql + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+    public SqlAndParams buildPageSql(String sql, long offset, int limit) {
+        return new SqlAndParams(sql + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+                Arrays.asList(offset, limit));
     }
     @Override
     public <W extends UpsertWrapper<W, E>,E> SqlAndParams buildUpsertSql(UpsertWrapper<W,E> wrapper) {

@@ -36,6 +36,22 @@ public class StringUtils {
 		return !isNotEmpty(tableName);
 	}
 
-	
+	public static String lowerFirst(String s) {
+		if (s == null || s.isEmpty()) {
+			return s;
+		}
+		char[] chars = s.toCharArray();
+		chars[0] = Character.toLowerCase(chars[0]);
+		return new String(chars);
+	}
+
+	public static String upperFirst(String s) {
+		if (s == null || s.isEmpty()) {
+			return s;
+		}
+		char[] chars = s.toCharArray();
+		chars[0] = Character.toUpperCase(chars[0]);
+		return new String(chars);
+	}
 
 }

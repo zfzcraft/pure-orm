@@ -1,4 +1,4 @@
-package cn.zfz.pureorm.crud.select;
+package cn.zfz.pureorm.crud.delete;
 
 import cn.zfz.pureorm.core.AbstractWrapper;
 

@@ -21,6 +21,12 @@ public abstract class AbstractWrapper<W, E> implements Wrapper<AbstractWrapper<W
 		return this;
 	}
 
+	protected AbstractWrapper<W, E> inPrimaryKeys(String tableName, String column, Object... values) {
+		this.tableName = tableName;
+		conditions.add(new ConditionNode(ConditionType.IN, column, values));
+		return this;
+	}
+
 	@Override
 	public String getTableName() {
 		return tableName;
@@ -92,6 +98,7 @@ public abstract class AbstractWrapper<W, E> implements Wrapper<AbstractWrapper<W
 	@Override
 	public AbstractWrapper<W, E> gt(LambadaColumn<E> field, Object value) {
 		and();
+		setTableName(field);
 		String column = LambadaCache.getLambadaMeta(field).getColumnName();
 		conditions.add(new ConditionNode(ConditionType.GT, column, value));
 		return this;

@@ -1,6 +1,7 @@
 package cn.zfz.pureorm.dialect;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import cn.zfz.pureorm.core.SqlAndParams;
@@ -65,11 +66,10 @@ public class SQLServerDialect implements Dialect {
         return sql.toString();
     }
 
-    // 4. 分页语法：SQL Server 2012+ 用 OFFSET/FETCH
     @Override
-    public String buildPageSql(String sql, long offset, int limit) {
-        // 注意：SQL Server 的 OFFSET 从 0 开始，和 MySQL 一致
-        return sql + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+    public SqlAndParams buildPageSql(String sql, long offset, int limit) {
+        return new SqlAndParams(sql + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+                Arrays.asList(offset, limit));
     }
 
 	@Override

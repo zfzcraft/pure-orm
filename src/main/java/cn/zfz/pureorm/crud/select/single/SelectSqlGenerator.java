@@ -36,28 +36,47 @@ public class SelectSqlGenerator {
 			params.addAll(where.getParams());
 		}
 
-		// 4. ORDER BY
+		// 4. GROUP BY
+		List<String> groupBys = wrapper.getGroupBys();
+		if (!groupBys.isEmpty()) {
+			sql.append(" GROUP BY ");
+			for (int i = 0; i < groupBys.size(); i++) {
+				if (i > 0) {
+					sql.append(", ");
+				}
+				sql.append(dialect.wrap(groupBys.get(i)));
+			}
+		}
+
+		// 5. HAVING
+		SqlAndParams having = wrapper.getHaving();
+		if (having != null && !having.getSql().isEmpty()) {
+			sql.append(" HAVING ").append(having.getSql());
+			params.addAll(having.getParams());
+		}
+
+		// 6. ORDER BY
 		List<OrderBy> orderByList = wrapper.getOrderBys();
 		if (!orderByList.isEmpty()) {
 			sql.append(" ORDER BY ");
 			for (int i = 0; i < orderByList.size(); i++) {
 				if (i > 0) {
 					sql.append(", ");
-				} else {
-					sql.append(dialect.wrap(orderByList.get(i).getName()));
-					sql.append(" ");
-					sql.append(orderByList.get(i).getOrder().name());
 				}
-
+				sql.append(dialect.wrap(orderByList.get(i).getName()));
+				sql.append(" ");
+				sql.append(orderByList.get(i).getOrder().name());
 			}
 		}
 
-		// 5. 分页
+		// 7. 分页（使用方言生成，参数由方言决定顺序）
 		if (wrapper.getOffset() != null && wrapper.getLimit() != null) {
-			sql = new StringBuilder(dialect.buildPageSql(sql.toString(), wrapper.getOffset(), wrapper.getLimit()));
-			params.add(0, wrapper.getOffset());
-			params.add(1, wrapper.getLimit());
+			SqlAndParams pageSqlAndParams = dialect.buildPageSql(sql.toString(), wrapper.getOffset(), wrapper.getLimit());
+			sql = new StringBuilder(pageSqlAndParams.getSql());
+			params.addAll(pageSqlAndParams.getParams());
 		}
+
+		// 8. 锁
 		if (wrapper.getLockMode() != null) {
 			if (wrapper.getLockMode() == LockMode.FOR_UPDATE) {
 				sql.append(dialect.forUpdate());

@@ -1,112 +1,56 @@
-
 package cn.zfz.pureorm.core;
 
 import java.io.Serializable;
 import java.util.List;
 
 import cn.zfz.pureorm.crud.delete.LambadaDeleteWrapper;
-import cn.zfz.pureorm.crud.select.UpdateWrapper;
+import cn.zfz.pureorm.crud.insert.InsertWrapper;
 import cn.zfz.pureorm.crud.select.single.SelectWrapper;
-import cn.zfz.pureorm.crud.upsert.UpsertWrapper;
+import cn.zfz.pureorm.crud.update.UpdateWrapper;
+import cn.zfz.pureorm.crud.upsert.LambadaUpsertWrapper;
 
-/**
- * PureORM 基础 Mapper 接口。
- * <p>
- * 设计原则： - 所有写操作必须带 WHERE 条件（防止全表更新/删除） - 所有查询通过 Wrapper 构造，确保编译期安全 - 不提供
- * save()/saveOrUpdate() 等模糊语义方法 - 不管理事务、连接、缓存
- *
- */
 public interface BaseMapper<T> {
-	/**
-	 * 
-	 * @param entity
-	 * @return generated key or affected row
-	 */
+	
+	<W extends InsertWrapper<W, T>> long insert(InsertWrapper<W, T> insertWrapper);
+
 	long insert(T entity);
-	/**
-	 * 
-	 * @param entity
-	 * @return generated key or affected row
-	 */
+
 	long insertNotNull(T entity);
-	/**
-	 * 
-	 * @param entity
-	 * @return generated key or affected row
-	 */
+
 	List<Long> insertBatch(List<T> entities);
-	/**
-	 * 
-	 * @param entity
-	 * @return generated key or affected row
-	 */
+
 	List<Long> insertBatch(List<T> entities, int batchSize);
 
-	/**
-	 * 
-	 * @param entity
-	 * @return affected row
-	 */
-	//int upsert(T entity);
-	/**
-	 * 
-	 * @param entity
-	 * @return affected row
-	 */
-	//int upsertNotNull(T entity);
+	<W extends UpdateWrapper<W, T>> int update(W updateWrapper);
 
-	//<W extends UpsertWrapper<W, T>> int upsert(UpsertWrapper<W, T> upsertWrapper);
+	int updateByPrimaryKey(T entity);
 
-	/**
-	 * 
-	 * @param entities
-	 * @return affected rows
-	 */
-	//List<Integer> upsertBatch(List<T> entities);
+	int updateNotNullByPrimaryKey(T entity);
 
-	//List<Integer> upsertBatch(List<T> entities, int batchSize);
+	int delete(LambadaDeleteWrapper<T> deleteWrapper);
 
-	
-	/**
-	 * 
-	 * @param updateWrapper
-	 * @return affected row
-	 */
-	//<W extends UpdateWrapper<W, T>> int update(UpdateWrapper<W, T> updateWrapper);
+	int deleteByPrimaryKey(Serializable primaryKey);
 
-	/**
-	 * 
-	 * @param updateWrappers
-	 * @return affected rows
-	 */
-	//<W extends UpdateWrapper<W, T>> List<Integer> batchUpdate(List<UpdateWrapper<W, T>> updateWrappers);
+	int deleteByPrimaryKeys(List<Serializable> primaryKeys);
 
-	//<W extends UpdateWrapper<W, T>> List<Integer> batchUpdate(List<UpdateWrapper<W, T>> updateWrappers, int batchSize);
+	<W extends SelectWrapper<W, T>> T selectOne(W selectWrapper);
 
-	/**
-	 * 
-	 * @param deleteWrapper
-	 * @return affected row
-	 */
-	//int delete(LambadaDeleteWrapper<T> deleteWrapper);
+	T selectByPrimaryKey(Serializable primaryKey);
 
-	//int deleteByPrimaryKey(Serializable primaryKey);
+	List<T> selectByPrimaryKeyList(List<Serializable> primaryKeys);
 
-	//List<Integer> deleteByPrimaryKeys(List<Serializable> primaryKeys);
+	<W extends SelectWrapper<W, T>> List<T> selectList(W selectWrapper);
 
-	
-	//<W extends SelectWrapper<W, T>> T selectOne(SelectWrapper<W, T> selectWrapper);
+	<W extends SelectWrapper<W, T>> long count(W selectWrapper);
 
-	//T selectByPrimaryKey(Serializable primaryKey);
+	<W extends SelectWrapper<W, T>> boolean exists(W selectWrapper);
 
-	//List<T> selectByPrimaryKeyList(List<Serializable> primaryKeys);
+	<W extends SelectWrapper<W, T>> Page<T> selectPage(W selectWrapper, int pageNum, int pageSize);
 
-	//<W extends SelectWrapper<W, T>> List<T> selectList(SelectWrapper<W, T> selectWrapper);
+	long upsert(T entity);
 
-	//<W extends SelectWrapper<W, T>> long count(SelectWrapper<W, T> selectWrapper);
+	long upsertNotNull(T entity);
 
-	//<W extends SelectWrapper<W, T>> boolean exists(SelectWrapper<W, T> selectWrapper);
-
-	//<W extends SelectWrapper<W, T>> Page<T> selectPage(SelectWrapper<W, T> selectWrapper, int pageNum, int pageSize);
+	int upsert(LambadaUpsertWrapper<T> upsertWrapper);
 
 }

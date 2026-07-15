@@ -1,10 +1,9 @@
-package cn.zfz.pureorm.crud.select;
+package cn.zfz.pureorm.crud.update;
 
 import java.util.List;
 
 import cn.zfz.pureorm.core.AbstractWrapper;
 import cn.zfz.pureorm.core.LambadaColumn;
-import cn.zfz.pureorm.crud.update.UpdateNode;
 
 public abstract class UpdateWrapper<W, E> extends AbstractWrapper<W, E> {
 	

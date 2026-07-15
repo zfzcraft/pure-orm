@@ -5,7 +5,6 @@ import java.util.List;
 
 import cn.zfz.pureorm.core.SqlAndParams;
 import cn.zfz.pureorm.crud.condition.ConditionSqlBuilder;
-import cn.zfz.pureorm.crud.select.UpdateWrapper;
 import cn.zfz.pureorm.dialect.Dialect;
 
 public class UpdateSqlGenerator {
@@ -38,11 +37,13 @@ public class UpdateSqlGenerator {
                     break;
                 case NATIVE:
                     sql.append(node.getNativeSql());
+                    if (node.getParams() != null && !node.getParams().isEmpty()) {
+                        params.addAll(node.getParams());
+                    }
                     break;
             }
         }
 
-        // WHERE
         SqlAndParams where = ConditionSqlBuilder.buildWhere(wrapper.getConditionNodes());
         if (!where.getSql().isEmpty()) {
             sql.append(" WHERE ").append(where.getSql());

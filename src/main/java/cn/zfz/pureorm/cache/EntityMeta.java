@@ -1,25 +1,37 @@
 package cn.zfz.pureorm.cache;
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-@Data
-@AllArgsConstructor
+
 public class EntityMeta {
 
-    // 实体类
     private final Class<?> entityClass;
-    // 表名
     private final String tableName;
-    // 主键字段
     private final FieldMeta primaryKeyField;
-    // 全部映射字段
     private final List<FieldMeta> fieldList;
-    // 快速查找：实体字段名 → FieldMeta
     private final Map<String, FieldMeta> fieldNameMap;
-    // 快速查找：数据库列名 → FieldMeta
     private final Map<String, FieldMeta> columnNameMap;
-	
+    private final Map<String, FieldMeta> columnNameLowerMap;
+    private final List<Field> allDeclaredFields;
 
-    
+    public EntityMeta(Class<?> entityClass, String tableName, FieldMeta primaryKeyField, List<FieldMeta> fieldList, Map<String, FieldMeta> fieldNameMap, Map<String, FieldMeta> columnNameMap, Map<String, FieldMeta> columnNameLowerMap, List<Field> allDeclaredFields) {
+        this.entityClass = entityClass;
+        this.tableName = tableName;
+        this.primaryKeyField = primaryKeyField;
+        this.fieldList = fieldList;
+        this.fieldNameMap = fieldNameMap;
+        this.columnNameMap = columnNameMap;
+        this.columnNameLowerMap = columnNameLowerMap;
+        this.allDeclaredFields = allDeclaredFields;
+    }
+
+    public Class<?> getEntityClass() { return entityClass; }
+    public String getTableName() { return tableName; }
+    public FieldMeta getPrimaryKeyField() { return primaryKeyField; }
+    public List<FieldMeta> getFieldList() { return fieldList; }
+    public Map<String, FieldMeta> getFieldNameMap() { return fieldNameMap; }
+    public Map<String, FieldMeta> getColumnNameMap() { return columnNameMap; }
+    public Map<String, FieldMeta> getColumnNameLowerMap() { return columnNameLowerMap; }
+    public List<Field> getAllDeclaredFields() { return allDeclaredFields; }
 }
+

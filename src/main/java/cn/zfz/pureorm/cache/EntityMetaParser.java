@@ -3,6 +3,7 @@ package cn.zfz.pureorm.cache;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import cn.zfz.pureorm.annotations.Column;
 import cn.zfz.pureorm.annotations.EnumValue;
@@ -14,17 +15,18 @@ import cn.zfz.pureorm.utils.StringUtils;
 
 public class EntityMetaParser {
 
+	private static final Map<Class<? extends Enum<?>>, Field> ENUM_VALUE_FIELD_CACHE = new ConcurrentHashMap<>();
+
 	public static EntityMeta parse(Class<?> clazz) {
-		// 1. 表名（你可以加 @Table 注解，这里先用类名）
 		String tableName = resolveTableName(clazz);
 
 		List<FieldMeta> fieldList = new ArrayList<>();
 		Map<String, FieldMeta> fieldNameMap = new HashMap<>();
 		Map<String, FieldMeta> columnNameMap = new HashMap<>();
+		Map<String, FieldMeta> columnNameLowerMap = new HashMap<>();
 		FieldMeta pkField = null;
 
-		// 遍历所有字段（排除静态、transient）
-		for (Field field : clazz.getDeclaredFields()) {
+		for (Field field : getAllDeclaredFields(clazz)) {
 			int mod = field.getModifiers();
 			if (Modifier.isStatic(mod) || Modifier.isTransient(mod) || field.isAnnotationPresent(NotColumn.class)) {
 				continue;
@@ -34,6 +36,7 @@ public class EntityMetaParser {
 			fieldList.add(meta);
 			fieldNameMap.put(meta.getField().getName(), meta);
 			columnNameMap.put(meta.getColumnName(), meta);
+			columnNameLowerMap.put(meta.getColumnName().toLowerCase(), meta);
 
 			if (meta.getFieldKind() == FieldKind.PRIMARY_KEY_AUTO_INCREMENT) {
 				if (pkField != null) {
@@ -43,8 +46,22 @@ public class EntityMetaParser {
 			}
 		}
 
-		return new EntityMeta(clazz, tableName, pkField, Collections.unmodifiableList(fieldList),
-				Collections.unmodifiableMap(fieldNameMap), Collections.unmodifiableMap(columnNameMap));
+		return new EntityMeta(clazz, tableName, pkField,
+				Collections.unmodifiableList(fieldList),
+				Collections.unmodifiableMap(fieldNameMap),
+				Collections.unmodifiableMap(columnNameMap),
+				Collections.unmodifiableMap(columnNameLowerMap),
+				Collections.unmodifiableList(getAllDeclaredFields(clazz)));
+	}
+
+	private static List<Field> getAllDeclaredFields(Class<?> clazz) {
+		List<Field> fields = new ArrayList<>();
+		Class<?> current = clazz;
+		while (current != null && current != Object.class) {
+			fields.addAll(Arrays.asList(current.getDeclaredFields()));
+			current = current.getSuperclass();
+		}
+		return fields;
 	}
 
 	private static String resolveTableName(Class<?> clazz) {
@@ -61,19 +78,16 @@ public class EntityMetaParser {
 
 		FieldKind fieldKind = FieldKind.COMMON;
 		String fieldName = field.getName();
-		// ====================== @Column ======================
 		Column col = field.getAnnotation(Column.class);
 		String columnName = col != null && !col.name().isEmpty() ? col.name() : StringUtils.camelToSnake(fieldName);
 		boolean pk = field.isAnnotationPresent(PrimaryKey.class);
-		boolean autoIncrement = false;
 		if (pk) {
-			autoIncrement = field.getAnnotation(PrimaryKey.class).autoIncrement();
+			boolean autoIncrement = field.getAnnotation(PrimaryKey.class).autoIncrement();
 			if (autoIncrement) {
 				fieldKind = FieldKind.PRIMARY_KEY_AUTO_INCREMENT;
 			}
 		}
-		
-		// ====================== 枚举 & @EnumValue ======================
+
 		boolean isEnum = field.getType().isEnum();
 		Field enumValueField = null;
 		if (isEnum) {
@@ -82,19 +96,17 @@ public class EntityMetaParser {
 		}
 
 		return new FieldMeta(field, fieldKind, field.getGenericType(), columnName, enumValueField);
-
 	}
 
-	/**
-	 * 一次性找到 @EnumValue 字段，缓存起来，不再循环
-	 */
 	private static Field findEnumValueField(Class<? extends Enum<?>> enumClass) {
-		for (Field f : enumClass.getDeclaredFields()) {
-			if (f.isAnnotationPresent(EnumValue.class)) {
-				return f;
+		return ENUM_VALUE_FIELD_CACHE.computeIfAbsent(enumClass, cls -> {
+			for (Field f : cls.getDeclaredFields()) {
+				if (f.isAnnotationPresent(EnumValue.class)) {
+					f.setAccessible(true);
+					return f;
+				}
 			}
-		}
-		return null;
+			return null;
+		});
 	}
-
 }

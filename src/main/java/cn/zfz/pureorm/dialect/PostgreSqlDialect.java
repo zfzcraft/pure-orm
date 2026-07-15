@@ -1,6 +1,7 @@
 package cn.zfz.pureorm.dialect;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import cn.zfz.pureorm.core.SqlAndParams;
@@ -38,8 +39,8 @@ public class PostgreSqlDialect implements Dialect {
     }
 
     @Override
-    public String buildPageSql(String sql, long offset, int limit) {
-        return sql + " LIMIT ? OFFSET ?";
+    public SqlAndParams buildPageSql(String sql, long offset, int limit) {
+        return new SqlAndParams(sql + " LIMIT ? OFFSET ?", Arrays.asList(limit, offset));
     }
     @Override
     public <W extends UpsertWrapper<W, E>,E> SqlAndParams buildUpsertSql(UpsertWrapper<W,E> wrapper) {

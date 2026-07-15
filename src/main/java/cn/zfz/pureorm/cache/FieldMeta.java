@@ -6,8 +6,7 @@ import java.lang.reflect.Type;
 import cn.zfz.pureorm.enums.FieldKind;
 import cn.zfz.pureorm.handler.DefaultEnumTypeHandler;
 import cn.zfz.pureorm.handler.EnumTypeHandler;
-import lombok.Data;
-@Data
+
 public class FieldMeta {
 	
 	private static final EnumTypeHandler ENUM_TYPE_HANLDER = new DefaultEnumTypeHandler();
@@ -34,6 +33,30 @@ public class FieldMeta {
 		this.genericType = genericType;
 		this.columnName = columnName;
 		this.enumValueField = enumValueField;
+	}
+
+	public Field getField() {
+		return field;
+	}
+
+	public FieldKind getFieldKind() {
+		return fieldKind;
+	}
+
+	public Type getGenericType() {
+		return genericType;
+	}
+
+	public String getColumnName() {
+		return columnName;
+	}
+
+	public Field getEnumValueField() {
+		return enumValueField;
+	}
+
+	public EnumTypeHandler getEnumTypeHandler() {
+		return enumTypeHandler;
 	}
 
 }

@@ -8,13 +8,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import cn.zfz.pureorm.annotations.EnumValue;
 import cn.zfz.pureorm.core.PureOrmException;
 
-/**
- * 枚举处理器默认实现（整合原EnumUtils所有核心逻辑） 包含：注解解析、字段缓存、双向转换、类型兼容，无任何冗余
- */
 public class DefaultEnumTypeHandler implements EnumTypeHandler {
 
-	// 缓存：枚举类 → @EnumValue标记字段（复用原EnumUtils的缓存逻辑，避免重复反射）
 	private static final Map<Class<? extends Enum<?>>, Field> ENUM_VALUE_FIELD_CACHE = new ConcurrentHashMap<>();
+	private static final Map<Class<? extends Enum<?>>, Map<Object, Enum<?>>> ENUM_VALUE_TO_CONSTANT_CACHE = new ConcurrentHashMap<>();
 
 	@Override
 	public Enum<?> toJava(Class<? extends Enum<?>> enumClass, Object dbValue) {
@@ -24,27 +21,46 @@ public class DefaultEnumTypeHandler implements EnumTypeHandler {
 			throw new IllegalArgumentException(enumClass.getName() + " 不是枚举类");
 		}
 
-		try {
-			Field annoField = getEnumValueField(enumClass);
-			if (annoField!=null) {
-				// 遍历枚举常量，匹配@EnumValue字段值（原EnumUtils核心匹配逻辑）
-				for (Enum<?> enumConst : enumClass.getEnumConstants()) {
-					Object annoValue = annoField.get(enumConst);
-					if (isValueMatch(annoValue, dbValue)) {
-						return enumConst;
-					}
-				}
-			}else {
-				for (Enum<?> enumConst : enumClass.getEnumConstants()) {
-					if (enumConst.name().equals(dbValue)) {
-						return enumConst;
-					}
+		Map<Object, Enum<?>> valueMap = ENUM_VALUE_TO_CONSTANT_CACHE.computeIfAbsent(enumClass, this::buildValueMap);
+		Enum<?> result = valueMap.get(normalizeKey(dbValue));
+		if (result != null) {
+			return result;
+		}
+		if (dbValue instanceof Number) {
+			for (Map.Entry<Object, Enum<?>> entry : valueMap.entrySet()) {
+				if (entry.getKey() instanceof Number
+						&& ((Number) entry.getKey()).longValue() == ((Number) dbValue).longValue()) {
+					return entry.getValue();
 				}
 			}
-		} catch (IllegalAccessException e) {
-			throw new PureOrmException("数据库值转枚举失败", e);
 		}
 		return null;
+	}
+
+	private Map<Object, Enum<?>> buildValueMap(Class<? extends Enum<?>> enumClass) {
+		Map<Object, Enum<?>> map = new ConcurrentHashMap<>();
+		Field annoField = getEnumValueField(enumClass);
+		for (Enum<?> enumConst : enumClass.getEnumConstants()) {
+			Object key;
+			if (annoField != null) {
+				try {
+					key = annoField.get(enumConst);
+				} catch (IllegalAccessException e) {
+					throw new PureOrmException("枚举值映射失败", e);
+				}
+			} else {
+				key = enumConst.name();
+			}
+			map.put(normalizeKey(key), enumConst);
+		}
+		return map;
+	}
+
+	private Object normalizeKey(Object key) {
+		if (key == null) {
+			return null;
+		}
+		return key;
 	}
 
 	@SuppressWarnings("unchecked")
@@ -63,12 +79,8 @@ public class DefaultEnumTypeHandler implements EnumTypeHandler {
 			}
 		}
 		return enumObject.name();
-
 	}
 
-	/**
-	 * 获取@EnumValue标记字段（带缓存，复用原EnumUtils的反射解析逻辑）
-	 */
 	private Field getEnumValueField(Class<? extends Enum<?>> enumClass) {
 		return ENUM_VALUE_FIELD_CACHE.computeIfAbsent(enumClass, cls -> {
 			for (Field field : cls.getDeclaredFields()) {
@@ -79,18 +91,5 @@ public class DefaultEnumTypeHandler implements EnumTypeHandler {
 			}
 			return null;
 		});
-	}
-
-	/**
-	 * 值匹配（兼容数值类型互转，复用原EnumUtils的兼容逻辑）
-	 */
-	private boolean isValueMatch(Object annoValue, Object dbValue) {
-		if (Objects.equals(annoValue, dbValue))
-			return true;
-		// 仅处理数值类型（@EnumValue最常用场景，保证轻量）
-		if (annoValue instanceof Number && dbValue instanceof Number) {
-			return ((Number) annoValue).longValue() == ((Number) dbValue).longValue();
-		}
-		return false;
 	}
 }

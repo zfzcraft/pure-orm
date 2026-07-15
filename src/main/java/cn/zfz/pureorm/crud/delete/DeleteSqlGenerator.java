@@ -9,7 +9,7 @@ import cn.zfz.pureorm.dialect.Dialect;
 
 public class DeleteSqlGenerator {
 
-	public static SqlAndParams buildSql(LambadaDeleteWrapper<?> wrapper, Dialect dialect) {
+	public static <W extends DeleteWrapper<W, ?>> SqlAndParams buildSql(W wrapper, Dialect dialect) {
 		StringBuilder sql = new StringBuilder("DELETE FROM ").append(dialect.wrap(wrapper.getTableName()));
 		List<Object> params = new ArrayList<>();
 		SqlAndParams where = ConditionSqlBuilder.buildWhere(wrapper.getConditionNodes());
@@ -17,7 +17,6 @@ public class DeleteSqlGenerator {
 			sql.append(" WHERE ").append(where.getSql());
 			params.addAll(where.getParams());
 		}
-
 		return new SqlAndParams(sql.toString(), params);
 	}
 }

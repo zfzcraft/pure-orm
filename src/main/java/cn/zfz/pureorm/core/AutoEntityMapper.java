@@ -1,257 +1,455 @@
 package cn.zfz.pureorm.core;
+
 import java.lang.reflect.*;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 
+import cn.zfz.pureorm.annotations.NotColumn;
 import cn.zfz.pureorm.annotations.OneToMany;
 import cn.zfz.pureorm.annotations.OneToOne;
+import cn.zfz.pureorm.cache.EntityMeta;
+import cn.zfz.pureorm.cache.EntityMetaCache;
+import cn.zfz.pureorm.cache.FieldMeta;
+import cn.zfz.pureorm.enums.FieldKind;
+import cn.zfz.pureorm.handler.EnumTypeHandler;
+import cn.zfz.pureorm.utils.StringUtils;
 
 public final class AutoEntityMapper {
-    // 反射缓存
-    private static final Map<Class<?>, EntityStruct> STRUCT_CACHE = new HashMap<>();
 
-    private static class EntityStruct {
-        Class<?> type;
-        String prefix;
-        Map<String, Field> plainFields = new HashMap<>();
-        Map<String, EntityStruct> oneToOne = new HashMap<>();
-        Map<String, EntityStruct> oneToMany = new HashMap<>();
-    }
+	private static final Map<StructCacheKey, EntityStruct> STRUCT_CACHE = new ConcurrentHashMap<>();
 
-    // 对外唯一入口
-    public static <T> List<T> map(ResultSet rs, Class<T> rootClass) throws SQLException {
-        if (rs == null || rootClass == null) return Collections.emptyList();
+	private static class StructCacheKey {
+		final Class<?> clazz;
+		final String prefix;
 
-        EntityStruct rootStruct = getEntityStruct(rootClass);
-        List<Map<String, Map<String, Object>>> rows = new ArrayList<>();
-        
-        // 读取所有行
-        while (rs.next()) {
-            rows.add(splitRowByPrefix(rs));
-        }
+		StructCacheKey(Class<?> clazz, String prefix) {
+			this.clazz = clazz;
+			this.prefix = prefix;
+		}
 
-        // 构建全局树（全层级去重）
-        List<EntityNode> rootTree = buildGlobalTree(rows, rootStruct);
-        // 转实体
-        return toEntityList(rootTree, rootStruct);
-    }
+		@Override
+		public boolean equals(Object o) {
+			if (this == o) return true;
+			if (!(o instanceof StructCacheKey)) return false;
+			StructCacheKey that = (StructCacheKey) o;
+			return Objects.equals(clazz, that.clazz) && Objects.equals(prefix, that.prefix);
+		}
 
-    // 带缓存解析实体结构
-    private static EntityStruct getEntityStruct(Class<?> clazz) {
-        if (STRUCT_CACHE.containsKey(clazz)) {
-            return STRUCT_CACHE.get(clazz);
-        }
+		@Override
+		public int hashCode() {
+			return Objects.hash(clazz, prefix);
+		}
+	}
 
-        EntityStruct struct = new EntityStruct();
-        struct.type = clazz;
-        struct.prefix = lowerFirst(clazz.getSimpleName());
+	private static class EntityStruct {
+		Class<?> type;
+		String prefix;
+		EntityMeta entityMeta;
+		Map<String, FieldMeta> columnToFieldMap;
+		Map<String, Field> nestedOneToOne = new HashMap<>();
+		Map<String, Field> nestedOneToMany = new HashMap<>();
+		Map<String, EntityStruct> oneToOneStructs = new HashMap<>();
+		Map<String, EntityStruct> oneToManyStructs = new HashMap<>();
+		String primaryKeyColumn;
+	}
 
-        for (Field field : getAllFields(clazz)) {
-            field.setAccessible(true);
+	public static <T> List<T> map(ResultSet rs, Class<T> rootClass) throws SQLException {
+		return map(rs, rootClass, rootClass);
+	}
 
-            if (field.isAnnotationPresent(OneToOne.class)) {
-                Class<?> target = field.getType();
-                EntityStruct child = getEntityStruct(target);
-                struct.oneToOne.put(child.prefix, child);
-                continue;
-            }
+	public static <T> List<T> map(ResultSet rs, Class<T> resultType, Class<?> rootEntityClass) throws SQLException {
+		if (rs == null || resultType == null) {
+			return Collections.emptyList();
+		}
 
-            if (field.isAnnotationPresent(OneToMany.class)) {
-                Type genType = field.getGenericType();
-                Class<?> genericClazz = (Class<?>) ((ParameterizedType) genType).getActualTypeArguments()[0];
-                EntityStruct child = getEntityStruct(genericClazz);
-                struct.oneToMany.put(child.prefix, child);
-                continue;
-            }
+		String rootPrefix = rootEntityClass.getSimpleName().toLowerCase();
+		EntityStruct rootStruct = getEntityStruct(resultType, rootPrefix);
+		List<Map<String, Map<String, Object>>> rows = readAllRows(rs);
 
-            struct.plainFields.put(field.getName(), field);
-        }
+		List<EntityNode> rootTree = buildGlobalTree(rows, rootStruct);
+		return toEntityList(rootTree, rootStruct);
+	}
 
-        STRUCT_CACHE.put(clazz, struct);
-        return struct;
-    }
+	private static List<Map<String, Map<String, Object>>> readAllRows(ResultSet rs) throws SQLException {
+		List<Map<String, Map<String, Object>>> rows = new ArrayList<>();
+		ResultSetMetaData meta = rs.getMetaData();
+		int colCount = meta.getColumnCount();
 
-    // 拆分每行数据
-    private static Map<String, Map<String, Object>> splitRowByPrefix(ResultSet rs) throws SQLException {
-        Map<String, Map<String, Object>> row = new HashMap<>();
-        ResultSetMetaData  meta = rs.getMetaData();
-        int colCount = meta.getColumnCount();
+		List<String> columnLabels = new ArrayList<>(colCount);
+		for (int i = 1; i <= colCount; i++) {
+			columnLabels.add(meta.getColumnLabel(i));
+		}
 
-        for (int i = 1; i <= colCount; i++) {
-            String label = meta.getColumnLabel(i);
-            Object value = rs.getObject(i);
+		while (rs.next()) {
+			Map<String, Map<String, Object>> row = new HashMap<>();
+			for (int i = 1; i <= colCount; i++) {
+				String label = columnLabels.get(i - 1);
+				Object value = rs.getObject(i);
 
-            String[] parts = label.split("\\.", 2);
-            if (parts.length != 2) continue;
+				int dotIdx = label.indexOf('.');
+				if (dotIdx <= 0 || dotIdx == label.length() - 1) {
+					continue;
+				}
 
-            String prefix = parts[0];
-            String field = parts[1];
-            row.computeIfAbsent(prefix, k -> new HashMap<>()).put(field, value);
-        }
-        return row;
-    }
+				String prefix = label.substring(0, dotIdx).toLowerCase();
+				String column = label.substring(dotIdx + 1).toLowerCase();
+				row.computeIfAbsent(prefix, k -> new HashMap<>()).put(column, value);
+			}
+			rows.add(row);
+		}
+		return rows;
+	}
 
-    // 构建全局树（核心：全层级去重）
-    private static List<EntityNode> buildGlobalTree(List<Map<String, Map<String, Object>>> rows,
-                                                    EntityStruct rootStruct) {
-        List<EntityNode> globalRoots = new ArrayList<>();
+	private static EntityStruct getEntityStruct(Class<?> clazz, String prefix) {
+		StructCacheKey key = new StructCacheKey(clazz, prefix);
+		EntityStruct cached = STRUCT_CACHE.get(key);
+		if (cached != null) {
+			return cached;
+		}
+		EntityStruct struct = buildEntityStruct(clazz, prefix);
+		STRUCT_CACHE.put(key, struct);
+		return struct;
+	}
 
-        for (Map<String, Map<String, Object>> row : rows) {
-            // 1. 构建本行所有节点
-            Map<String, EntityNode> nodeMap = new HashMap<>();
-            row.forEach((prefix, data) -> nodeMap.put(prefix, new EntityNode(prefix, data)));
+	private static EntityStruct buildEntityStruct(Class<?> clazz, String prefix) {
+		EntityStruct struct = new EntityStruct();
+		struct.type = clazz;
+		struct.prefix = prefix;
 
-            // 2. 根节点去重
-            EntityNode rootNode = nodeMap.get(rootStruct.prefix);
-            if (rootNode == null) continue;
+		EntityMeta entityMeta = EntityMetaCache.getEntityMeta(clazz);
+		struct.entityMeta = entityMeta;
+		struct.columnToFieldMap = entityMeta.getColumnNameLowerMap();
 
-            int idx = globalRoots.indexOf(rootNode);
-            if (idx != -1) {
-                rootNode = globalRoots.get(idx);
-            } else {
-                globalRoots.add(rootNode);
-            }
+		FieldMeta pkField = entityMeta.getPrimaryKeyField();
+		if (pkField != null) {
+			struct.primaryKeyColumn = pkField.getColumnName().toLowerCase();
+		}
 
-            // 3. 递归挂载子节点（全层级去重）
-            mountChildren(rootNode, rootStruct, nodeMap);
-        }
-        return globalRoots;
-    }
+		for (Field field : entityMeta.getAllDeclaredFields()) {
+			field.setAccessible(true);
 
-    // 递归挂载子节点（核心修复：每一层都做去重）
-    private static void mountChildren(EntityNode parent,
-                                     EntityStruct parentStruct,
-                                     Map<String, EntityNode> rowNodes) {
-        // 处理一对一
-        for (Entry<String, EntityStruct> entry : parentStruct.oneToOne.entrySet()) {
-            String childPrefix = entry.getKey();
-            EntityStruct childStruct = entry.getValue();
-            EntityNode childNode = rowNodes.get(childPrefix);
-            
-            if (childNode == null) continue;
+			if (isOneToOne(field)) {
+				Class<?> target = field.getType();
+				String childPrefix = getNestedPrefix(target);
+				EntityStruct child = getEntityStruct(target, childPrefix);
+				struct.oneToOneStructs.put(child.prefix, child);
+				struct.nestedOneToOne.put(child.prefix, field);
+				continue;
+			}
 
-            // 父节点下的一对一节点去重
-            EntityNode existChild = parent.getOneToOne(childPrefix);
-            if (existChild == null) {
-                parent.putOneToOne(childPrefix, childNode);
-                existChild = childNode;
-            }
+			if (isOneToMany(field)) {
+				Type genType = field.getGenericType();
+				Class<?> genericClazz = (Class<?>) ((ParameterizedType) genType).getActualTypeArguments()[0];
+				String childPrefix = getNestedPrefix(genericClazz);
+				EntityStruct child = getEntityStruct(genericClazz, childPrefix);
+				struct.oneToManyStructs.put(child.prefix, child);
+				struct.nestedOneToMany.put(child.prefix, field);
+				continue;
+			}
 
-            // 递归处理子节点的子节点
-            mountChildren(existChild, childStruct, rowNodes);
-        }
+			if (field.getAnnotation(NotColumn.class) != null) {
+				continue;
+			}
+		}
 
-        // 处理一对多（核心修复：调用带缓存的addOneToMany）
-        for (Entry<String, EntityStruct> entry : parentStruct.oneToMany.entrySet()) {
-            String childPrefix = entry.getKey();
-            EntityStruct childStruct = entry.getValue();
-            EntityNode childNode = rowNodes.get(childPrefix);
-            
-            if (childNode == null) continue;
+		return struct;
+	}
 
-            // 调用带缓存的add方法，自动去重
-            parent.addOneToMany(childNode);
-            // 递归处理子节点的子节点
-            mountChildren(childNode, childStruct, rowNodes);
-        }
-    }
+	private static boolean isOneToOne(Field field) {
+		if (field.getAnnotation(OneToOne.class) != null) {
+			return true;
+		}
+		Class<?> type = field.getType();
+		return isEntityLike(type);
+	}
 
-    // 节点转实体
-    private static <T> List<T> toEntityList(List<EntityNode> roots, EntityStruct struct) {
-        List<T> list = new ArrayList<>();
-        for (EntityNode root : roots) {
-            list.add(toEntity(root, struct));
-        }
-        return list;
-    }
+	private static boolean isOneToMany(Field field) {
+		if (field.getAnnotation(OneToMany.class) != null) {
+			return true;
+		}
+		if (!Collection.class.isAssignableFrom(field.getType())) {
+			return false;
+		}
+		Type genType = field.getGenericType();
+		if (!(genType instanceof ParameterizedType)) {
+			return false;
+		}
+		Type[] typeArgs = ((ParameterizedType) genType).getActualTypeArguments();
+		if (typeArgs.length == 0 || !(typeArgs[0] instanceof Class)) {
+			return false;
+		}
+		Class<?> genericClazz = (Class<?>) typeArgs[0];
+		return isEntityLike(genericClazz);
+	}
 
-    @SuppressWarnings("unchecked")
-	private static <T> T toEntity(EntityNode node, EntityStruct struct) {
-        try {
-            T inst = (T) struct.type.getDeclaredConstructor().newInstance();
-            Map<String, Object> data = node.getData();
+	private static boolean isEntityLike(Class<?> type) {
+		if (type.isPrimitive() || type.isEnum() || type.isArray()) {
+			return false;
+		}
+		if (type == String.class || Number.class.isAssignableFrom(type) || type == Boolean.class
+				|| type == Character.class || type == Date.class) {
+			return false;
+		}
+		if (type.getName().startsWith("java.") || type.getName().startsWith("javax.")) {
+			return false;
+		}
+		try {
+			EntityMetaCache.getEntityMeta(type);
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
+	}
 
-            // 普通字段赋值
-            for (Field f : struct.plainFields.values()) {
-                f.set(inst, data.get(f.getName()));
-            }
+	private static String getNestedPrefix(Class<?> targetType) {
+		return targetType.getSimpleName().toLowerCase();
+	}
 
-            // 一对一赋值
-            for (Entry<String, EntityStruct> entry : struct.oneToOne.entrySet()) {
-                String prefix = entry.getKey();
-                EntityNode childNode = node.getOneToOne(prefix);
-                if (childNode == null) continue;
+	private static List<EntityNode> buildGlobalTree(List<Map<String, Map<String, Object>>> rows,
+			EntityStruct rootStruct) {
+		List<EntityNode> globalRoots = new ArrayList<>();
+		Map<String, EntityNode> rootPkCache = new HashMap<>();
 
-                Field f = findOneToOneField(struct.type, prefix);
-                f.set(inst, toEntity(childNode, entry.getValue()));
-            }
+		for (Map<String, Map<String, Object>> row : rows) {
+			Map<String, EntityNode> nodeMap = new HashMap<>();
+			row.forEach((prefix, data) -> nodeMap.put(prefix, new EntityNode(prefix, data)));
 
-            // 一对多赋值
-            for (Entry<String, EntityStruct> entry : struct.oneToMany.entrySet()) {
-                String prefix = entry.getKey();
-                List<Object> children = new ArrayList<>();
-                
-                for (EntityNode n : node.getOneToManyNodes()) {
-                    if (prefix.equals(n.getPrefix())) {
-                        children.add(toEntity(n, entry.getValue()));
-                    }
-                }
+			EntityNode rootNode = nodeMap.get(rootStruct.prefix);
+			if (rootNode == null) {
+				continue;
+			}
 
-                Field f = findOneToManyField(struct.type, prefix);
-                f.set(inst, children);
-            }
+			String rootPk = getPkValue(rootNode, rootStruct);
+			EntityNode existingRoot = null;
+			if (rootPk != null) {
+				existingRoot = rootPkCache.get(rootPk);
+			} else {
+				int idx = globalRoots.indexOf(rootNode);
+				if (idx != -1) {
+					existingRoot = globalRoots.get(idx);
+				}
+			}
 
-            return inst;
-        } catch (Exception e) {
-            throw new RuntimeException("映射实体失败：" + struct.type, e);
-        }
-    }
+			if (existingRoot != null) {
+				rootNode = existingRoot;
+			} else {
+				globalRoots.add(rootNode);
+				if (rootPk != null) {
+					rootPkCache.put(rootPk, rootNode);
+				}
+			}
 
-    // 工具方法
-    private static List<Field> getAllFields(Class<?> clazz) {
-        List<Field> fields = new ArrayList<>();
-        while (clazz != null && clazz != Object.class) {
-            fields.addAll(Arrays.asList(clazz.getDeclaredFields()));
-            clazz = clazz.getSuperclass();
-        }
-        return fields;
-    }
+			mountChildren(rootNode, rootStruct, nodeMap);
+		}
+		return globalRoots;
+	}
 
-    private static String lowerFirst(String s) {
-        if (s == null || s.isEmpty()) return s;
-        char[] c = s.toCharArray();
-        c[0] = Character.toLowerCase(c[0]);
-        return new String(c);
-    }
+	private static String getPkValue(EntityNode node, EntityStruct struct) {
+		if (struct.primaryKeyColumn == null) {
+			return null;
+		}
+		Object pk = node.getData().get(struct.primaryKeyColumn);
+		return pk == null ? null : pk.toString();
+	}
 
-    private static Field findOneToOneField(Class<?> owner, String targetPrefix) {
-        for (Field f : owner.getDeclaredFields()) {
-            if (f.isAnnotationPresent(OneToOne.class)) {
-                if (targetPrefix.equals(lowerFirst(f.getType().getSimpleName()))) {
-                    f.setAccessible(true);
-                    return f;
-                }
-            }
-        }
-        throw new IllegalArgumentException("未匹配到 @OneToOne 字段：" + targetPrefix);
-    }
+	private static void mountChildren(EntityNode parent, EntityStruct parentStruct,
+			Map<String, EntityNode> rowNodes) {
+		Map<String, EntityNode> oneToManyPkCache = new HashMap<>();
+		for (EntityNode existing : parent.getOneToManyNodes()) {
+			String prefix = existing.getPrefix();
+			EntityStruct childStruct = parentStruct.oneToManyStructs.get(prefix);
+			if (childStruct != null) {
+				String pk = getPkValue(existing, childStruct);
+				if (pk != null) {
+					oneToManyPkCache.put(prefix + ":" + pk, existing);
+				}
+			}
+		}
 
-    private static Field findOneToManyField(Class<?> owner, String targetPrefix) {
-        for (Field f : owner.getDeclaredFields()) {
-            if (f.isAnnotationPresent(OneToMany.class)) {
-                Type type = f.getGenericType();
-                Class<?> genericClazz = (Class<?>) ((ParameterizedType) type).getActualTypeArguments()[0];
-                if (targetPrefix.equals(lowerFirst(genericClazz.getSimpleName()))) {
-                    f.setAccessible(true);
-                    return f;
-                }
-            }
-        }
-        throw new IllegalArgumentException("未匹配到 @OneToMany 字段：" + targetPrefix);
-    }
+		for (Entry<String, EntityStruct> entry : parentStruct.oneToOneStructs.entrySet()) {
+			String childPrefix = entry.getKey();
+			EntityStruct childStruct = entry.getValue();
+			EntityNode childNode = rowNodes.get(childPrefix);
 
-    private AutoEntityMapper() {}
+			if (childNode == null || isAllNull(childNode.getData())) {
+				continue;
+			}
+
+			EntityNode existChild = parent.getOneToOne(childPrefix);
+			if (existChild == null) {
+				parent.putOneToOne(childPrefix, childNode);
+				existChild = childNode;
+			}
+
+			mountChildren(existChild, childStruct, rowNodes);
+		}
+
+		for (Entry<String, EntityStruct> entry : parentStruct.oneToManyStructs.entrySet()) {
+			String childPrefix = entry.getKey();
+			EntityStruct childStruct = entry.getValue();
+			EntityNode childNode = rowNodes.get(childPrefix);
+
+			if (childNode == null || isAllNull(childNode.getData())) {
+				continue;
+			}
+
+			String childPk = getPkValue(childNode, childStruct);
+			EntityNode existingChild = null;
+			if (childPk != null) {
+				existingChild = oneToManyPkCache.get(childPrefix + ":" + childPk);
+			}
+
+			if (existingChild == null) {
+				parent.addOneToMany(childNode);
+				if (childPk != null) {
+					oneToManyPkCache.put(childPrefix + ":" + childPk, childNode);
+				}
+				existingChild = childNode;
+			}
+
+			mountChildren(existingChild, childStruct, rowNodes);
+		}
+	}
+
+	private static boolean isAllNull(Map<String, Object> data) {
+		if (data == null || data.isEmpty()) {
+			return true;
+		}
+		for (Object v : data.values()) {
+			if (v != null) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	@SuppressWarnings("unchecked")
+	private static <T> List<T> toEntityList(List<EntityNode> roots, EntityStruct struct) {
+		List<T> list = new ArrayList<>(roots.size());
+		for (EntityNode root : roots) {
+			list.add((T) toEntity(root, struct));
+		}
+		return list;
+	}
+
+	private static Object toEntity(EntityNode node, EntityStruct struct) {
+		try {
+			Object inst = struct.type.getDeclaredConstructor().newInstance();
+			Map<String, Object> data = node.getData();
+
+			for (Entry<String, FieldMeta> entry : struct.columnToFieldMap.entrySet()) {
+				String column = entry.getKey();
+				FieldMeta fieldMeta = entry.getValue();
+				if (!data.containsKey(column)) {
+					continue;
+				}
+				Object value = data.get(column);
+				if (value == null) {
+					continue;
+				}
+
+				Field field = fieldMeta.getField();
+				field.setAccessible(true);
+
+				try {
+					if (fieldMeta.getFieldKind() == FieldKind.ENUM) {
+						EnumTypeHandler enumTypeHandler = fieldMeta.getEnumTypeHandler();
+						Object javaValue = enumTypeHandler.toJava((Class<? extends Enum<?>>) field.getType(), value);
+						field.set(inst, javaValue);
+					} else {
+						field.set(inst, convertValue(value, field.getType()));
+					}
+				} catch (Exception e) {
+					throw new PureOrmException("映射字段失败：" + field.getName(), e);
+				}
+			}
+
+			for (Entry<String, EntityStruct> entry : struct.oneToOneStructs.entrySet()) {
+				String prefix = entry.getKey();
+				EntityNode childNode = node.getOneToOne(prefix);
+				if (childNode == null) {
+					continue;
+				}
+
+				Field f = struct.nestedOneToOne.get(prefix);
+				f.setAccessible(true);
+				f.set(inst, toEntity(childNode, entry.getValue()));
+			}
+
+			for (Entry<String, EntityStruct> entry : struct.oneToManyStructs.entrySet()) {
+				String prefix = entry.getKey();
+				List<Object> children = new ArrayList<>();
+
+				for (EntityNode n : node.getOneToManyNodes()) {
+					if (prefix.equals(n.getPrefix())) {
+						children.add(toEntity(n, entry.getValue()));
+					}
+				}
+
+				Field f = struct.nestedOneToMany.get(prefix);
+				f.setAccessible(true);
+				f.set(inst, children);
+			}
+
+			return inst;
+		} catch (Exception e) {
+			throw new PureOrmException("映射实体失败：" + struct.type.getName(), e);
+		}
+	}
+
+	private static Object convertValue(Object value, Class<?> targetType) {
+		if (value == null) {
+			return null;
+		}
+		if (targetType.isInstance(value)) {
+			return value;
+		}
+
+		if (targetType == String.class) {
+			return value.toString();
+		}
+
+		if (value instanceof Number) {
+			Number num = (Number) value;
+			if (targetType == int.class || targetType == Integer.class) {
+				return num.intValue();
+			}
+			if (targetType == long.class || targetType == Long.class) {
+				return num.longValue();
+			}
+			if (targetType == short.class || targetType == Short.class) {
+				return num.shortValue();
+			}
+			if (targetType == byte.class || targetType == Byte.class) {
+				return num.byteValue();
+			}
+			if (targetType == double.class || targetType == Double.class) {
+				return num.doubleValue();
+			}
+			if (targetType == float.class || targetType == Float.class) {
+				return num.floatValue();
+			}
+		}
+
+		if (targetType == boolean.class || targetType == Boolean.class) {
+			if (value instanceof Boolean) {
+				return value;
+			}
+			if (value instanceof Number) {
+				return ((Number) value).intValue() != 0;
+			}
+			if (value instanceof String) {
+				return Boolean.parseBoolean((String) value);
+			}
+		}
+
+		return value;
+	}
+
+	private AutoEntityMapper() {
+	}
 }

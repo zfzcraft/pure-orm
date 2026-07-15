@@ -1,6 +1,7 @@
 package cn.zfz.pureorm.dialect;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import cn.zfz.pureorm.core.SqlAndParams;
@@ -37,8 +38,8 @@ public class MySQLDialect implements Dialect {
     }
 
     @Override
-    public String buildPageSql(String sql, long offset, int limit) {
-        return sql + " LIMIT ?, ?";
+    public SqlAndParams buildPageSql(String sql, long offset, int limit) {
+        return new SqlAndParams(sql + " LIMIT ?, ?", Arrays.asList(offset, limit));
     }
     @Override
     public <W extends UpsertWrapper<W, E>,E> SqlAndParams buildUpsertSql(UpsertWrapper<W,E> wrapper) {

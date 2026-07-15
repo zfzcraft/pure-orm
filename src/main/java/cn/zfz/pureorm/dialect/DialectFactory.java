@@ -11,6 +11,7 @@ public class DialectFactory {
 	
 	static {
 		dialectMap.put(DbType.MYSQL, new MySQLDialect());
+		dialectMap.put(DbType.H2, new H2Dialect());
 	}
 
     public static Dialect detect(DbType dbType) {
